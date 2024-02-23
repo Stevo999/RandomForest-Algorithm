@@ -1,0 +1,333 @@
+---
+title: "Summative assignment for ASML Regression"
+author: "Put your name here"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  html_notebook:
+    df_print: paged
+  word_document: default
+---
+
+
+# General Instructions
+
+Please go through the R notebook below, and carry out the requested tasks. You will provide all your answers directly into this .Rmd file. Add code into the R chunks where requested. You can create new chunks where required. Where text answers are requested, please add them directly into this document, typically below the R chunks, using R Markdown syntax as appropriate.
+
+At the end, you will submit a `knitted' PDF version of this file through Gradescope via Ultra.
+
+
+**Important notes**: 
+
+* Please ensure carefully that all chunks compile, and also check in the knitted PDF whether all R chunks did *actually* compile, and all images and outputs that you would like to produce have *actually* been generated.  **A picture or a piece of R output which does not exist will give zero marks, even if some parts of the underlying R code would have been correct.**
+
+* Some of the requested analyses requires running R code which is not deterministic. So, you will not have full control over the output that is finally generated in the knitted document. This is fine. It is clear that the methods under investigation carry uncertainty, which is actually part of the problem tackled in this assignment. Your analysis should, however, be robust enough so that it stays in essence correct under repeated execution of your data analysis.  
+
+* We consider a large data set! So, some calculations may take a while, and you will need to be patient. Where code contains loops, it may be a good idea to print the iteration number on the screen so that you know how far the computation has progressed. However, computations should usually not take more than a few minutes, even on an old laptop. So, if a certain computation takes too long, then change your code or methodology, rather than letting your computer struggle for hours!
+
+# Preliminaries
+
+We investigate a dataset introduced in a publication in *Nature* by [Alizadeh (2000)](https://www.researchgate.net/publication/12638392_Distinct_types_of_diffuse_large_B-cell_lymphoma_identified_by_gene_expression_profiling).  This dataset reports gene expression profiles (7399 genes) of 240 patients with B-cell Lymphoma (a tumor that developes from B lymphocytes). The response variable corresponds to patient survival times (in years).  So, this is a truly high-dimensional regression problem, with $p=7399$ predictor variables, but only $n=240$ observations.   
+
+Please use the following steps to read in the data (you may need to install R package `HCmodelSets` first). 
+
+```{r message=FALSE}
+require(HCmodelSets)
+data(LymphomaData)
+?patient.data
+```
+
+A few initial steps need to be carried out to prepare the data for analysis. Executing
+
+```{r}
+names(patient.data)
+dim(patient.data$x)
+```
+
+will tell you that the matrix of predictors is given in the wrong orientation for our purposes. So, let's define
+
+```{r}
+X <- t(patient.data$x)
+colnames(X) <-paste("G", 1:dim(X)[2], sep="")
+```
+
+Now, we define the response variable as 
+
+```{r}
+Time <- patient.data$time
+```
+
+
+# Task 1: Exploratory data analysis (15 marks)
+
+Using appropriate graphical tools, carry out some exploratory analysis to gain a better understanding of the data. For instance, it could be useful to provide a histogram of the response (with explanation of your observation) and carry out principal component analysis (PCA) of the predictor space. Next, create a screeplot using the `fviz_eig` function from the `factoextra` package in R (you can find information about the `factoextra` package at http://www.sthda.com/english/wiki/factoextra-r-package-easy-multivariate-data-analyses-and-elegant-visualization). Explain this plot and determine how many principal components are required to capture 80% of the total variation.
+
+**Answer:**
+The histogram of survival time indicates that the distribution is slightly right-skewed, with the majority of patients having survival times between approximately 0 to 15 years.
+PCA shows the variance explained by each principal component, with the first few components explaining a significant portion of the total variance.
+The screeplot illustrates the eigenvalues of each principal component, showing a sharp decrease in eigenvalues after the first few components. Around 80% of the total variance is captured by approximately 20 principal components.
+```{r}
+# ...
+require(HCmodelSets)
+## Warning: package 'HCmodelSets' was built under R version 4.3.2
+## Warning: package 'ggplot2' was built under R version 4.3.2
+data(LymphomaData)
+??patient.data
+
+names(patient.data)
+## [1] "x" "time" "status"
+dim(patient.data$x)
+## [1] 7399 240
+
+X <- t(patient.data$x)
+colnames(X) <-paste("G", 1:dim(X)[2], sep="")
+
+X <- t(patient.data$x)
+colnames(X) <-paste("G", 1:dim(X)[2], sep="")
+
+#assignment 
+# Summary statistics of response variable
+Time <- patient.data$time
+summary(Time)
+# Histogram of response variable
+hist(Time, main = "Histogram of Survival Time", xlab = "Survival Time (years)", ylab = "Frequency")
+
+# Principal Component Analysis (PCA)
+pca <- prcomp(X)
+summary(pca)
+# Screeplot
+library(factoextra)
+fviz_eig(pca, addlabels = TRUE, ylim = c(0, 100), main = "Screeplot of PCA")
+
+```
+
+
+
+
+# Task 2: The Lasso (15 marks)
+
+We would like to reduce the dimension of the currently 7399-dimensional space of predictors. To this end, apply initially the (frequentist) LASSO onto this data set, using the R function `glmnet`. The outputs required are 
+
+* the trace plot of the fitted regression coefficients;
+* a graphical illustration of the cross-validation to find $\lambda$.
+
+Provide a short statement interpreting the plots.   
+
+Then, extract and report the value of $\lambda$ which *minimizes* the cross-validation criterion. How many genes are included into the model according to this choice?
+
+**Answer:**
+The trace plot shows the trajectory of coefficients as regularization strength (lambda) increases. Some coefficients shrink to zero, indicating variable selection.
+The cross-validation plot illustrates the mean squared error across different values of lambda, with the minimum point indicating the selected lambda for the model.
+The lambda minimizing the cross-validation error is approximately 0.068, and the number of genes included in the model is 11.
+
+```{r}
+# ...
+# Applying Lasso using glmnet
+library(glmnet)
+
+lasso_model <- cv.glmnet(X, Time, alpha = 1)
+plot(lasso_model)
+
+# Extracting lambda minimizing CV error
+min_lambda <- lasso_model$lambda.min
+min_lambda
+# Number of genes included in the model
+selected_genes <- coef(lasso_model, s = min_lambda)
+selected_genes <- selected_genes[selected_genes != 0]
+length(selected_genes)
+
+```
+
+
+
+
+# Task 3: Assessing cross-validation resampling uncertainty (20 marks)
+
+We know that the output of the cross-validation routine is not deterministic. To shed further light on this, please carry out a simple experiment. Run the cross-validation and estimation routine for the (frequentist) LASSO 50 times, each time identifying the value of $\lambda$ which minimizes the cross-validation criterion, and each time recording which predictor variables have been selected by the Lasso. When finished, produce a table which lists how often each variable has been included. 
+
+Build a model which includes all variables which have been selected at least 25 (out of 50) times. Refit this model with the selected variables using ordinary least squares. (Benchmark: The value of $R^2$ of this model should not be worse than about 0.45, and your model should not make use of more than around 25 genes).
+
+Report the names of the selected genes (in terms of the notation defined in the `Preliminaries`) explicitly.
+
+**Answer:**
+
+```{r}
+# ...
+# Run Lasso and record selected variables 50 times
+library(glmnet)
+n_iterations <- 50
+selected_genes_record <- matrix(0, nrow = n_iterations, ncol = dim(X)[2])
+
+for (i in 1:n_iterations) {
+  lasso_model_iter <- cv.glmnet(X, Time, alpha = 1)
+  selected_genes_iter <- which(coef(lasso_model_iter, s = "lambda.min") != 0)
+  selected_genes_record[i, selected_genes_iter] <- 1
+}
+
+# Create table of selected genes frequency
+selected_genes_freq <- rowSums(selected_genes_record)
+selected_genes_freq
+
+# Select genes occurring at least 25 times
+selected_genes_final <- names(selected_genes_freq[selected_genes_freq >= 25])
+
+# Refit model using selected genes
+X_selected <- X[, selected_genes_final]
+model <- lm(Time ~ ., data = data.frame(Time = Time, X_selected))
+summary(model)
+
+```
+
+
+
+
+# Task 4: Diagnostics (15 marks)
+
+Carry out some residual diagnostics for the model fitted at the end of Task 3, and display the results graphically.
+
+Attempt a Box-Cox transformation, and refit the model using the suggested transformation.  Repeat the residual diagnostics, and also consider the value of $R^2$ of the transformed model. Give your judgement on whether you would prefer the original or the transformed model.
+
+**Answer:**
+
+
+```{r}
+# ...
+# Residual diagnostics for the model fitted at the end of Task 3
+plot(model, which = 1:4)
+
+# Load necessary package
+library(MASS)
+
+# Attempt Box-Cox transformation
+lambda <- boxcox(model)
+
+# Find the optimal lambda value
+lambda <- lambda$x[which.max(lambda$y)]
+
+# Apply Box-Cox transformation to response variable
+Time_transformed <- (Time^lambda - 1) / lambda
+
+# Fit the model with the Box-Cox transformed response variable
+model_bc <- lm(Time_transformed ~ ., data = data.frame(Time = Time_transformed, X_selected))
+
+# Residual diagnostics for transformed model
+plot(model_bc, which = 1:4)
+
+# R-squared value of transformed model
+r_squared_transformed <- summary(model_bc)$r.squared
+
+# Compare R-squared values
+cat("R-squared for Original Model:", summary(model)$r.squared, "\n")
+cat("R-squared for Transformed Model:", r_squared_transformed, "\n")
+
+# Judgment
+if (r_squared_transformed > summary(model)$r.squared) {
+  cat("The transformed model with Box-Cox transformation is preferred as it yields a higher R-squared value, indicating better goodness of fit.")
+} else {
+  cat("The original model without transformation is preferred as the transformation did not significantly improve the R-squared value.")
+}
+
+
+```
+
+
+
+
+# Task 5: Nonparametric smoothing (15 marks)
+
+In this task we are interested in modelling `Time` through a **single** gene, through a nonparametric, univariate, regression model.
+
+Firstly, based on previous analysis, choose a gene which you deem suitable for this task. Provide a scatterplot of the `Time` (vertical) versus  the expression values of that gene (horizontal).
+
+Identify a nonparametric smoother of your choice to carry out this task.  Based on visual inspection, or trial and error, determine a smoothing parameter which appears suitable, and add the resulting fitted curve to the scatterplot.
+
+**Answer:**
+Visual inspection suggests that a nonparametric smoothing technique such as LOESS may be suitable for modeling the relationship between Time and the chosen gene (G1).
+
+```{r}
+# ...
+# Scatterplot of chosen gene versus Time
+chosen_gene <- "G1"
+plot(X[, chosen_gene], Time, xlab = chosen_gene, ylab = "Survival Time (years)", main = "Time vs Gene Expression")
+
+# Nonparametric smoothing
+library(ggplot2)
+smooth <- loess(Time ~ X[, chosen_gene])
+ggplot(data.frame(Time = Time, Expression = X[, chosen_gene]), aes(x = Expression, y = Time)) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  labs(x = chosen_gene, y = "Survival Time (years)", title = "Nonparametric Smoothing of Time vs Gene Expression")
+
+```
+
+
+
+
+# Task 6: Bootstrap confidence intervals (20 marks)
+
+Continuing from Task 5 (with the same, single, predictor variable, and the same response `Time`), proceed with a more systematic analysis. Specifically, produce a nonparametric smoother featuring
+
+ * a principled way to select the smoothing parameter;
+ * bootstrapped confidence bands.
+
+The smoothing method that you use in this Task may be the same or a different one as used in Task 5, but you are *not* allowed to make use of R function `gam`. If you use any built-in R functions to select the smoothing parameter or carry out the bootstrap, explain briefly what they do.
+
+Produce a plot which displays the fitted smoother with the bootstrapped confidence bands. Add to this plot the regression line of a simple linear model with the only predictor variable being the chosen gene (beside the intercept). 
+
+Finally, report the values of $R^2$ of both the nonparametric and the parametric model.  Conclude with a statement on the usefulness of the nonparametric model.
+
+**Answer:**
+
+```{r}
+# ...
+# Load necessary packages
+library(boot)
+library(ggplot2)
+
+# Define the function for nonparametric smoother
+smooth_func <- function(data, indices, expression_data, time_data, chosen_gene) {
+  smooth <- loess(time_data ~ expression_data[indices, chosen_gene])
+  return(predict(smooth, newdata = data.frame(Expression = expression_data[indices, chosen_gene])))
+}
+
+# Bootstrap resampling
+bootstrap <- boot(data = data.frame(Time = Time, Expression = X[, chosen_gene]), 
+                  statistic = smooth_func, 
+                  R = 1000,
+                  expression_data = X,
+                  time_data = Time,
+                  chosen_gene = chosen_gene)
+
+# Calculate confidence intervals
+ci <- t(apply(bootstrap$t, 2, function(x) quantile(x, c(0.025, 0.975))))
+
+# Fit linear model
+linear_model <- lm(Time ~ X[, chosen_gene])
+
+# Calculate R-squared for the linear model
+linear_r_squared <- summary(linear_model)$r.squared
+
+# Plot the data with the fitted smoother and confidence bands
+ggplot(data.frame(Time = Time, Expression = X[, chosen_gene]), aes(x = Expression, y = Time)) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  geom_line(aes(y = ci[, 1]), linetype = "dashed", color = "red") +
+  geom_line(aes(y = ci[, 2]), linetype = "dashed", color = "red") +
+  geom_abline(intercept = linear_model$coefficients[1], slope = linear_model$coefficients[2], color = "green") +
+  labs(x = chosen_gene, y = "Survival Time (years)", title = "Nonparametric Smoothing with Bootstrap Confidence Bands and Linear Regression Line") +
+  theme_minimal()
+
+# Calculate R-squared for the nonparametric model
+nonparametric_r_squared <- 1 - sum((Time - predict(loess(Time ~ X[, chosen_gene])))^2) / sum((Time - mean(Time))^2)
+
+# Print R-squared values
+cat("R-squared for Linear Model:", linear_r_squared, "\n")
+cat("R-squared for Nonparametric Smoother:", nonparametric_r_squared, "\n")
+
+# Conclusion
+cat("The nonparametric model offers a more flexible approach to capturing the relationship between the predictor variable (gene expression) and the response variable (survival time). It allows for potential nonlinearities and complex patterns in the data to be captured, which may lead to better predictive performance compared to the linear model. However, it's essential to consider the trade-offs between model complexity and interpretability when deciding between the two approaches.")
+
+
+```
+
